@@ -5,11 +5,13 @@ from PIL import Image, ImageOps
 import numpy as np
 
 app = Flask(__name__)
-
-# Allow Flutter Web / browser requests
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-model = load_model("mnist_model.keras")
+# Load model without optimizer/training config
+model = load_model("mnist_model.keras", compile=False)
+
+# Warm up TensorFlow so first prediction is not too slow
+model.predict(np.zeros((1, 784), dtype="float32"), verbose=0)
 
 
 @app.route("/")
@@ -19,7 +21,6 @@ def home():
 
 @app.route("/predict", methods=["POST", "OPTIONS"])
 def predict():
-    # Handles browser preflight request
     if request.method == "OPTIONS":
         return jsonify({"status": "ok"}), 200
 
@@ -34,7 +35,6 @@ def predict():
 
     img_array = np.array(image).astype("float32") / 255.0
 
-    # MNIST style: white digit on black background
     if img_array.mean() > 0.5:
         img_array = 1.0 - img_array
 
@@ -43,12 +43,9 @@ def predict():
 
     prediction = model.predict(img_array, verbose=0)
 
-    predicted_digit = int(np.argmax(prediction))
-    confidence = float(np.max(prediction))
-
     return jsonify({
-        "prediction": predicted_digit,
-        "confidence": confidence
+        "prediction": int(np.argmax(prediction)),
+        "confidence": float(np.max(prediction))
     })
 
 
