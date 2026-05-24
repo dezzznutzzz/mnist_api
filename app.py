@@ -1,17 +1,44 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from keras.models import load_model
 from PIL import Image, ImageOps
 import numpy as np
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-# Load model without optimizer/training config
-model = load_model("mnist_model.keras", compile=False)
+weights = np.load("mnist_weights.npz")
 
-# Warm up TensorFlow so first prediction is not too slow
-model.predict(np.zeros((1, 784), dtype="float32"), verbose=0)
+W1 = weights["W1"]
+b1 = weights["b1"]
+W2 = weights["W2"]
+b2 = weights["b2"]
+W3 = weights["W3"]
+b3 = weights["b3"]
+
+
+def relu(x):
+    return np.maximum(0, x)
+
+
+def softmax(x):
+    exp_x = np.exp(x - np.max(x))
+    return exp_x / np.sum(exp_x)
+
+
+def run_prediction(img_array):
+    z1 = np.dot(img_array, W1) + b1
+    a1 = relu(z1)
+
+    z2 = np.dot(a1, W2) + b2
+    a2 = relu(z2)
+
+    z3 = np.dot(a2, W3) + b3
+    output = softmax(z3[0])
+
+    predicted_digit = int(np.argmax(output))
+    confidence = float(np.max(output))
+
+    return predicted_digit, confidence
 
 
 @app.route("/")
@@ -35,17 +62,18 @@ def predict():
 
     img_array = np.array(image).astype("float32") / 255.0
 
+    # MNIST style: bright digit on dark background
     if img_array.mean() > 0.5:
         img_array = 1.0 - img_array
 
     img_array[img_array < 0.15] = 0.0
     img_array = img_array.reshape(1, 784)
 
-    prediction = model.predict(img_array, verbose=0)
+    digit, confidence = run_prediction(img_array)
 
     return jsonify({
-        "prediction": int(np.argmax(prediction)),
-        "confidence": float(np.max(prediction))
+        "prediction": digit,
+        "confidence": confidence
     })
 
 
